@@ -1,0 +1,111 @@
+---
+title: "Practical Machine Learning"
+output: html_document
+---
+
+## Background
+
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+### Weight Lifting Exercises Dataset
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+### WLE Dataset cite
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+Read more: http://groupware.les.inf.puc-rio.br/har#sbia_paper_section#ixzz3MYJsOOpO
+
+```{r, echo=FALSE}
+library(caret)
+library(ggplot2)
+library(Hmisc)
+library(plyr)
+library(randomForest)
+```
+
+Load Data Files and summarize the data for exploration
+
+```{r}
+setwd("~/Data Science/Practical Machine learning")
+set.seed(12345)
+orig_train <- read.csv("pml-training.csv")
+orig_test <- read.csv("pml-testing.csv")
+table(orig_train$classe)
+#prop.table(orig_table(train$classe))
+#summary(orig_train)
+```
+
+### Data Preprosseing using Caret Turtorial as reference
+
+- Remove variable with Near Zero Vlaues
+- Remove variables that are not measurements 
+- Remove derived/calculated variables 
+- Remove highly Correlated variables
+
+```{r}
+# Remove variable with Near Zero Vlaues, saveMetrics=FALSE gives position
+nzv <- nearZeroVar(orig_train,saveMetrics=FALSE)
+nzv_training <- orig_train[-c(nzv)]
+```
+
+```{r}
+unused_vars <- names(nzv_training) %in% c("X","user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","new_window","num_window")
+unused_train  <- nzv_training[!unused_vars]
+```
+
+```{r}
+exclude_cols <- grep("^var|^avg|^max|^min|^std|^amplitude",names(unused_train ))
+exld_unused_train  <- unused_train [-c(exclude_cols)]
+```
+
+```{r}
+exld_unused_train_no_class <- exld_unused_train[-c(dim(exld_unused_train))]
+correlated_cols_to_exclude <- findCorrelation(cor(exld_unused_train_no_class), cutoff= 0.75)
+processed_training <- exld_unused_train[-c(correlated_cols_to_exclude)]
+```
+
+
+```{r}
+data_part = createDataPartition(processed_training$classe, p=0.75, list=F)
+training <- processed_training[data_part,]
+train_test_data <- processed_training[-data_part,]
+```
+### Model Fitting using RandomForest
+- Train the training class, had to remove prox= TRUE to avoid memory issues
+
+```{r}
+Fit <- train(training$classe ~., data=training, method="rf")
+```
+
+- Print model Fit
+```{r}
+print(Fit)
+getTree(Fit$finalModel,k=2)
+Fit$finalModel
+```
+
+
+- Use Predict and Crossvalidate Train/Test data
+```{r}
+pred_train_test <- predict(Fit,train_test_data)
+train_test_data$predRight <- pred_train_test == train_test_data$classe
+table(pred_train_test ,train_test_data$classe)
+```
+
+
+- Preprocessing Test data set
+```{r}
+preproc_test <- orig_test[-c(nzv )]
+preproc_test <- preproc_test[!unused_vars]
+preproc_test <- preproc_test[-c(exclude_cols)]
+preproc_test <- preproc_test[-c(correlated_cols_to_exclude)]
+
+```
+
+- Predict and Print Predict Test Outcome
+```{r}
+pred_test <- predict(Fit,preproc_test)
+
+pred_test
+```
